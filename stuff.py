@@ -1,4 +1,7 @@
-import json
+import itertools
+import math
+from attr import attrs, attrib
+from geom import Point, Rect
 
 
 class Visitor:
@@ -53,29 +56,30 @@ class Visitor:
 def get_matching_node(visitor, match_node, node_type, key):
     if match_node is None:
         return None
-    if Element.compare_types(match_node == node_type):
+    if compare_types(match_node == node_type):
         return match_node
 
     for match_node in visitor.rest_children():
-        if Element.compare_types(match_node, node_type):
+        if compare_types(match_node, node_type):
             return match_node
 
 
 def create_node(visitor, node_type, key=None):
-    print(f"Creating node {node_type} with key {key}")
-    return Element(node_type)
+    # print(f"Creating node {node_type} with key {key}")
+    return node_type.create_element()
 
 
 def align_with_node(visitor, node_type, key=None):
     existing_node = get_matching_node(visitor, visitor.current_node, node_type, key)
     if existing_node is not None:
-        print(f"Removing {existing_node}")
+        # print(f"Removing {existing_node}")
         visitor.current_parent.remove_remove(existing_node)
     node = existing_node or create_node(visitor, node_type, key)
     # TODO: Some stuff here
+    node.widget = node_type
     if node is None:
         return
-    print(f"Inserting {node}")
+    # print(f"Inserting {node}")
     visitor.current_parent.add_child(visitor.current_id, node)
 
 
@@ -84,7 +88,7 @@ def clear_unvisited(visitor, parent, node):
 
 
 def open_node(visitor, node_type, key=None):
-    print(f"Open {node_type}")
+    # print(f"Open {node_type}")
     visitor.next_node()
     align_with_node(visitor, node_type, key)
     visitor.enter_node()
@@ -92,7 +96,7 @@ def open_node(visitor, node_type, key=None):
 
 
 def close_node(visitor):
-    print(f"Close")
+    # print(f"Close")
     clear_unvisited(visitor, visitor.current_parent, visitor.get_next_node())
     visitor.exit_node()
 
@@ -110,85 +114,392 @@ def node_visitor(visitor):
     return Node
 
 
-class Element:
-    def __init__(self, widget, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.widget = widget
-        self.children = []
+# class Element:
+#     def __init__(self, widget, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.widget = widget
+#         self.children = []
         
+#     def remove_child(self, child):
+#         self.children.remove(child)
+
+#     def add_child(self, index, child):
+#         self.children.insert(index, child)
+
+def compare_types(cls, element, new_widget):
+    if element.widget.__class__ != new_widget.__class__:
+        return False
+    return True
+
+
+@attrs
+class ConsoleRenderer:
+    console = attrib()
+
+
+@attrs
+class EdgeInsets:
+    top = attrib(default=0)
+    right = attrib(default=0)
+    bottom = attrib(default=0)
+    left = attrib(default=0)
+
+    @property
+    def horizontal(self):
+        return self.left + self.right
+
+    @property
+    def vertical(self):
+        return self.top + self.bottom
+
+    @property
+    def size(self):
+        return Point(self.horizontal, self.vertical)
+
+
+@attrs
+class BoxConstraint:
+    min_width = attrib(default=0)
+    min_height = attrib(default=0)
+    max_width = attrib(default=math.inf)
+    max_height = attrib(default=math.inf)
+
+    def constrain_width(self, width=math.inf):
+        return min(max(width, self.min_width), self.max_width)
+
+    def constrain_height(self, height=math.inf):
+        return min(max(height, self.min_height), self.max_height)
+
+    def constrain(self, size):
+        return Point(
+            self.constrain_width(size.x),
+            self.constrain_height(size.y)
+        )
+
+    def loosen(self):
+        return BoxConstraint(
+            min_width=0,
+            min_height=0,
+            max_width=self.max_width,
+            max_height=self.max_height
+        )
+
+    def deflate(self, insets):
+        deflated_min_w = max(0, self.min_width - insets.horizontal)
+        deflated_min_h = max(0, self.min_height - insets.vertical)
+        return BoxConstraint(
+            min_width=deflated_min_w,
+            min_height=deflated_min_h,
+            max_width=max(deflated_min_w, self.max_width - insets.horizontal),
+            max_height=max(deflated_min_h, self.max_height - insets.vertical),
+        )
+
+    @property
+    def has_bounded_width(self):
+        return self.max_width < math.inf
+    
+    @property
+    def has_bounded_height(self):
+        return self.max_height < math.inf
+
+    @classmethod
+    def from_size(cls, size):
+        return BoxConstraint(size.x, size.y, size.x, size.y)
+
+    @classmethod
+    def from_w_h(cls, w, h):
+        return BoxConstraint(w, h, w, h)
+
+
+
+@attrs
+class Bounds:
+    pos = attrib(factory=Point)
+    size = attrib(factory=Point)
+
+
+@attrs
+class Element:
+    widget = attrib(default=None)
+    # layout = attrib(default=None)
+    # draw = attrib(default=None)
+    bounds = attrib(factory=Bounds)
+    children = attrib(factory=list)
+
     def remove_child(self, child):
         self.children.remove(child)
 
     def add_child(self, index, child):
         self.children.insert(index, child)
 
+    @property
+    def child(self):
+        assert len(self.children) == 1  
+        return self.children[0]
+
+
+class RootElement(Element):
+    def __init__(self):
+        super().__init__()
+        self.widget = None
+
+    def perform_layout(self, constraints):
+        self.child.perform_layout(constraints)
+        
+    def draw(self, renderer, pos):
+        self.child.draw(renderer, pos)
+
+
+class ElementWidget:
+    def create_element(self):
+        return self.ElementType(widget=self)
+
+
+@attrs
+class Text(ElementWidget):
+    label = attrib()
+    align = attrib(default='left')
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            size = Point(len(self.widget.label), 1)
+            size = constraints.constrain(size)
+            self.bounds.size = size
+
+        def draw(self, renderer, pos):
+            x = 0
+            if self.widget.align == 'right':
+                x = self.bounds.size.x - len(self.widget.label)
+            renderer.console.print_(
+                pos.x + x,
+                pos.y,
+                self.widget.label
+            )
+
+@attrs
+class Constraint(ElementWidget):
+    constraints = attrib(default=BoxConstraint())
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            child_constraints = BoxConstraint(
+                min_width=max(constraints.min_width, self.widget.constraints.min_width),
+                min_height=max(constraints.min_height, self.widget.constraints.min_height),
+                max_width=min(constraints.max_width, self.widget.constraints.max_width),
+                max_height=min(constraints.max_height, self.widget.constraints.max_height),
+            )
+            self.child.perform_layout(child_constraints)
+            self.bounds.size = self.child.bounds.size
+            
+        def draw(self, renderer, pos):
+            self.child.draw(renderer, pos + self.child.bounds.pos)
+
+
+def MinWidth(min_width):
+    return Constraint(BoxConstraint(min_width=min_width))
+
+
+def MaxWidth(max_width):
+    return Constraint(BoxConstraint(max_width=max_width))
+
+
+def MinHeight(min_height):
+    return Constraint(BoxConstraint(min_height=min_height))
+
+
+def MaxHeight(max_height):
+    return Constraint(BoxConstraint(max_height=max_height))
+
+@attrs
+class ColumnLayout(ElementWidget):
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            self.bounds.size = Point()
+            for child in self.children:
+                child_constraints = BoxConstraint(
+                    min_width=constraints.max_width,
+                    min_height=0,
+                    max_width=constraints.max_width,
+                    max_height=constraints.max_height
+                )
+                child.perform_layout(child_constraints)
+                child.bounds.pos = Point(
+                    x=0,
+                    y=self.bounds.size.y
+                )
+                # todo constrain rest children heights
+                self.bounds.size = Point(
+                    x=max(self.bounds.size.x, child.bounds.size.x),
+                    y=self.bounds.size.y + child.bounds.size.y
+                )
+            
+        def draw(self, renderer, pos):
+            for child in self.children:
+                child.draw(renderer, pos + child.bounds.pos)
+
+
+class BackgroundColor(ElementWidget):
+    def __init__(self, r, g, b):
+        self.color = (r, g, b)
+    
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            self.child.perform_layout(constraints)
+            self.bounds.size = self.child.bounds.size
+
+        def draw(self, renderer, pos):
+            x = slice(pos.x, pos.x + self.bounds.size.x)
+            y = slice(pos.y, pos.y + self.bounds.size.y)
+            renderer.console.bg[y, x] = self.widget.color
+            renderer.console.ch[y, x] = ord(' ')
+            self.child.draw(renderer, pos)
+
+
+@attrs
+class Padding(ElementWidget):
+    inset = attrib()
+
     @classmethod
-    def compare_types(cls, element, new_widget):
-        if element.widget.__class__ != new_widget.__class__:
-            return False
-        return True
+    def all(cls, v):
+        return Padding(EdgeInsets(v, v, v, v))
+
+    @classmethod
+    def trbl(cls, t, r, b, l):
+        return Padding(EdgeInsets(t, r, b, l))
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            inner_constraint = constraints.deflate(self.widget.inset)
+            self.child.perform_layout(inner_constraint)
+            self.child.bounds.position = Point(
+                self.widget.inset.left,
+                self.widget.inset.top
+            )
+            self.bounds.size = constraints.constrain(
+                self.child.bounds.size + self.widget.inset.size
+            )
+            
+        def draw(self, renderer, pos):
+            pos = pos + Point(self.widget.inset.left, self.widget.inset.top)
+            self.child.draw(renderer, pos)
+
+
+@attrs
+class Align(ElementWidget):
+    x = attrib(default='default')
+    y = attrib(default='default')
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            child_constraints = constraints.loosen()
+            self.child.perform_layout(child_constraints)
+            self.bounds.size = constraints.constrain(
+                Point(
+                    math.inf if self.widget.x != 'default' else self.child.bounds.size.x,
+                    math.inf if self.widget.y != 'default' else self.child.bounds.size.y
+                )
+            )
+            if self.widget.x == 'right':
+                self.child.bounds.pos = Point(
+                    self.bounds.size.x - self.child.bounds.size.x,
+                    0
+                )
+            
+        def draw(self, renderer, pos):
+            pos += self.child.bounds.pos
+            self.child.draw(renderer, pos)
+    
+    @classmethod
+    def right(cls):
+        return Align(x='right')
+    
+    @classmethod
+    def left(cls):
+        return Align(x='left')
 
 
 
+def node_visitor(visitor):
+    class Node:
+        def __init__(self, *widgets):
+            self.widgets = widgets
+
+        def __enter__(self):
+            for widget in self.widgets:
+                open_node(visitor, widget)
+
+        def __exit__(self, type, value, traceback):
+            for widget in self.widgets:
+                close_node(visitor)
+    return Node
 
 
-
-class Background:
-    def __init__(self, color):
-        self.color = color
-
-
-class Padding:
-    def __init__(self, inset):
-        self.inset = inset
+@attrs
+class Context:
+    root = attrib()
+    visitor = attrib()
 
 
-class Text:
-    def __init__(self, label):
-        self.label = label
+global_context = None
 
 
-if __name__ == "__main__":
+def update_ui(ctx, func, *args, **kwargs):
+    global global_context
+    if not ctx:
+        root = RootElement()
+        visitor = Visitor(root)
+        ctx = Context(root, visitor)
 
-    root = Element(None)
-    visitor = Visitor(root)
-    container = node_visitor(visitor)
+        def add_container(*args):
+            return node_visitor(visitor)(*args)
 
-    def container(node, *args):
-        return node_visitor(visitor)(node)
+        def add_node(*widgets):
+            for widget in widgets:
+                open_node(visitor, widget)
+            for widget in reversed(widgets):
+                close_node(visitor)
 
-    def node(node_type):
-        open_node(visitor, node_type)
-        close_node(visitor)
+        ctx.add_container = add_container
+        ctx.add_node = add_node
 
-    with container(
-        Background('red'),
-        # Padding(20)
-    ): 
-        node(Text("Hello"))
-        node(Text("What is this"))
+    global_context = ctx
+    func(ctx, *args, **kwargs)
 
-        for i in range(3):
-            node(Text(f"Label {i}"))
-
-    print(root)
-    # print(json.dumps(root, indent=2))
+    return ctx
 
 
-# def something():
+def add_container(*widgets):
+    return global_context.add_container(*widgets)
 
-#     def create_button(button):
-#         return widget(
-#             key(button.id),
-#             border_radius(2),
-#             background_color('red'),
-#             padding(20),
-#             label("Hello")
-#         )
- 
-#     return widget(
-#         background_color('red'),
-#         padding(20),
-#         box(),
-#         map(create_button, buttons)
-#     )
+
+def add_node(*widgets):
+    return global_context.add_node(*widgets)
+
+
+def my_gui_function(ctx, game_state):
+    with add_container(
+        Align.left(),
+        MaxWidth(20),
+        BackgroundColor(100, 0, 0),
+        Padding.all(1),
+        ColumnLayout()
+    ):
+        add_node(Text("Hello"))
+        add_node(Text("Hello"))
+
+        add_node(
+            BackgroundColor(0, 0, 10),
+            Padding.all(1),
+            Text(f"player {game_state.player.pos}")
+        )
+
+        if game_state.player.pos.x == 10:
+            add_node(Text(f"Oh fuck he's at 10"))
+
+        for entity in itertools.islice(game_state.entities, 5):
+            name = entity.breed.name.noun_text
+            health = entity.health
+            add_node(Text(f"{name}"))
+            if health:
+                add_node(Align.right(), Text(f"{health}"))
+
