@@ -1,9 +1,9 @@
 from attr import attrs, attrib
 from Cocoa import *
 from Foundation import NSObject, NSSize, NSPoint
-import gui
-from gui import Element, ElementWidget
-from geom import Point
+from gui.core import Element, ElementWidget
+import gui.core as gui
+from .geom import Point
 
 
 class AppDelegate (NSObject):

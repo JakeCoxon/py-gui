@@ -1,5 +1,8 @@
-from gui import Padding, ColumnLayout, Node, Container
-from cocoa import Button, Slider, start_app
+import sys, os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+
+from gui.core import Padding, ColumnLayout, Node, Container
+from gui.cocoa import Button, Slider, start_app
 
 
 def gui_func(ctx):
@@ -14,10 +17,3 @@ def gui_func(ctx):
 
 if __name__ == "__main__":
     start_app(gui_func, title="Hello World")
-
-
-
-
-
-
-

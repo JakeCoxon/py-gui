@@ -1,7 +1,7 @@
 import itertools
 import math
 from attr import attrs, attrib
-from geom import Point
+from .geom import Point
 
 
 class Visitor:
@@ -230,6 +230,9 @@ class Element:
 
     def layout(self, constraints):
         return self.perform_layout(constraints)
+
+    def perform_layout(self, constraints):
+        raise NotImplementedError()
     
     @property
     def child(self):
@@ -417,6 +420,32 @@ class Align(ElementWidget):
     @classmethod
     def left(cls):
         return Align(x='left')
+
+
+@attrs
+class Size(ElementWidget):
+    w = attrib(default='default')
+    h = attrib(default='default')
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            self.bounds.size = constraints.constrain(
+                Point(
+                    math.inf if self.widget.w == 'default' else self.widget.w,
+                    math.inf if self.widget.h == 'default' else self.widget.h
+                )
+            )
+            
+        def draw(self, renderer, pos):
+            pass
+    
+    @classmethod
+    def width(cls, w):
+        return Size(w=w)
+    
+    @classmethod
+    def height(cls, h):
+        return Size(h=h)
 
 
 
