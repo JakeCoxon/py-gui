@@ -236,7 +236,10 @@ class Element:
     
     @property
     def child(self):
-        assert len(self.children) == 1  
+        count = len(self.children)
+        if count == 0:
+            return
+        assert count == 1
         return self.children[0]
 
 
@@ -317,10 +320,15 @@ def MaxHeight(max_height):
 
 @attrs
 class ColumnLayout(ElementWidget):
+    spacing = attrib(default=0)
+
     class ElementType(Element):
         def perform_layout(self, constraints):
             self.bounds.size = Point()
             for child in self.children:
+                if self.bounds.size.y and self.widget.spacing:
+                    self.bounds.size += Point(0, self.widget.spacing)
+
                 child_constraints = BoxConstraints(
                     min_width=constraints.max_width,
                     min_height=0,
@@ -385,7 +393,7 @@ class Padding(ElementWidget):
             )
             
         def draw(self, renderer, pos):
-            self.child.draw(renderer, pos)
+            self.child.draw(renderer, pos + self.child.bounds.pos)
 
 
 @attrs
