@@ -31,8 +31,8 @@ class CocoaElement(Element):
             parent = parent.parent
         return parent
 
-    def attach_to_parent(self, parent):
-        super().attach_to_parent(parent)
+    def mount(self, parent):
+        super().mount(parent)
         parent = self.find_cocoa_parent()
         if not parent:
             raise RuntimeError("No parent to attach to")
@@ -83,13 +83,20 @@ class CocoaRootElement(CocoaElement):
 @attrs
 class Button(ElementWidget):
     label = attrib()
+    on_press = attrib(default=None)
 
     class ElementType(CocoaElement):
         def create_view(self):
             button = NSButton.alloc().initWithFrame_(((10.0, 10.0), (80.0, 80.0)))
             button.setBezelStyle_(4)
             button.setTitle_(self.widget.label)
+            self.delegate = CallbackWrapper(self.callback)
+            button.setTarget_(self.delegate)
+            button.setAction_('action:')
             return button
+
+        def callback(self, sender):
+            self.widget.on_press()
 
         def perform_layout(self, constraints):
             size = Point(80.0, 40.0)
@@ -97,15 +104,40 @@ class Button(ElementWidget):
 
 @attrs
 class Slider(ElementWidget):
+    on_change = attrib(default=None)
 
     class ElementType(CocoaElement):
         def create_view(self):
-            button = NSSlider.alloc().init()
-            return button
+            slider = NSSlider.alloc().init()
+            self.delegate = CallbackWrapper(self.callback)
+            slider.setTarget_(self.delegate)
+            slider.setAction_('action:')
+            return slider
+
+        def callback(self, sender):
+            self.widget.on_change(self.view.doubleValue())
 
         def perform_layout(self, constraints):
             size = Point(80.0, 40.0)
             self.bounds.size = constraints.constrain(size)
+
+
+class CallbackWrapper(NSObject):
+    # setDelegate_() often does not retain the delegate, so a reference should be maintained elsewhere.
+
+    def __new__(cls, callback):
+        return cls.alloc().initWithCallback_(callback)
+
+    def initWithCallback_(self, callback):
+        self = self.init()
+        self.callback = callback
+        return self
+
+    def action_(self, sender):
+        # if hasattr(sender, "vanillaWrapper"):
+        #     sender = sender.vanillaWrapper()
+        if self.callback is not None:
+            self.callback(sender)
 
 
 def start_app(gui_func, title):
@@ -126,7 +158,10 @@ def start_app(gui_func, title):
         visitor=gui.Visitor(root)
     )
 
-    gui.update_ui(context, gui_func)
+    def gui_func2(ctx):
+        gui.Node(gui.Component(gui_func))
+
+    gui.update_ui(context, gui_func2)
 
     root.layout(gui.BoxConstraints.from_w_h(250.0, 100.0))
 

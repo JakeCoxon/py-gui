@@ -215,17 +215,17 @@ class Element:
     children = attrib(factory=list)
 
     def remove_child(self, child):
-        child.detatch_from_parent()
+        child.unmount()
         self.children.remove(child)
 
     def add_child(self, index, child):
         self.children.insert(index, child)
-        child.attach_to_parent(self)
+        child.mount(self)
 
-    def attach_to_parent(self, parent):
+    def mount(self, parent):
         self.parent = parent
 
-    def detatch_from_parent(self):
+    def unmount(self):
         self.parent = None
 
     def layout(self, constraints):
@@ -260,7 +260,63 @@ class ElementWidget:
         return self.ElementType(widget=self)
 
 
+class ComponentElement(Element):
+    def mount(self, parent):
+        super().mount(parent)
+        self.states = []
+        self.visitor = Visitor(self)
+        self.context = Context(self, self.visitor)
+        self.rebuild()
 
+    def rebuild(self):
+        self.state_cursor = 0
+        build_ui_with_context(self.context, self.build)
+
+    def build(self, context):
+        pass
+
+    def perform_layout(self, constraints):
+        self.child.layout(constraints)
+        self.bounds.size = self.child.bounds.size
+
+    def draw(self, renderer, pos):
+        self.child.draw(renderer, pos)
+
+    def push_state(self, initial):
+        if len(self.states) < self.state_cursor + 1:
+            self.states.append(initial)
+        current = self.state_cursor
+        self.state_cursor += 1
+        return current
+
+    def get_state(self, idx):
+        return self.states[idx]
+
+    def set_state(self, idx, value):
+        self.states[idx] = value
+        self.rebuild()
+
+
+def use_state(initial):
+    element = get_current_context().visitor.current_parent
+    idx = element.push_state(initial)
+    current_value = element.get_state(idx)
+
+    def set_state(value):
+        element.set_state(idx, value)
+        
+    return current_value, set_state
+
+
+class Component(ElementWidget):
+    def __init__(self, func, *args, **kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    class ElementType(ComponentElement):
+        def build(self, context):
+            self.widget.func(context, *self.widget.args, **self.widget.kwargs)
 
 
 @attrs
@@ -456,6 +512,19 @@ class Size(ElementWidget):
         return Size(h=h)
 
 
+@attrs
+class ContextProvider(ElementWidget):
+    value = attrib()
+
+    class ElementType(Element):
+        
+        def perform_layout(self, constraints):
+            self.child.layout(constraints)
+            self.bounds.size = constraints.constrain(self.child.bounds.size)
+
+        def draw(self, renderer, pos):
+            self.child.draw(renderer, pos)
+        
 
 def node_visitor(visitor):
     class Node:
@@ -487,26 +556,36 @@ class Context:
             close_node(self.visitor)
 
 
-global_context = None
+context_stack = []
 
 
-def update_ui(ctx, func, *args, **kwargs):
-    global global_context
-    if not ctx:
+def build_ui_with_context(context, func):
+    context_stack.append(context)
+    func(context)
+    context_stack.pop()
+
+
+def get_current_context():
+    return context_stack[-1]
+    
+
+def update_ui(context, func, *args, **kwargs):
+    if not context:
         root = RootElement()
         visitor = Visitor(root)
-        ctx = Context(root, visitor)
+        context = Context(root, visitor)
 
-    global_context = ctx
-    func(ctx, *args, **kwargs)
+    context_stack.append(context)
+    func(context, *args, **kwargs)
+    context_stack.pop()
 
-    return ctx
+    return context
 
 
 def Container(*widgets):
-    return global_context.add_container(*widgets)
+    return get_current_context().add_container(*widgets)
 
 
 def Node(*widgets):
-    return global_context.add_node(*widgets)
+    return get_current_context().add_node(*widgets)
 
