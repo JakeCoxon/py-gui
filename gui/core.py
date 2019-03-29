@@ -343,23 +343,6 @@ class ColumnLayout(ElementWidget):
                 child.draw(renderer, pos + child.bounds.pos)
 
 
-class BackgroundColor(ElementWidget):
-    def __init__(self, r, g, b):
-        self.color = (r, g, b)
-    
-    class ElementType(Element):
-        def perform_layout(self, constraints):
-            self.child.layout(constraints)
-            self.bounds.size = self.child.bounds.size
-
-        def draw(self, renderer, pos):
-            x = slice(pos.x, pos.x + self.bounds.size.x)
-            y = slice(pos.y, pos.y + self.bounds.size.y)
-            renderer.console.bg[y, x] = self.widget.color
-            renderer.console.ch[y, x] = ord(' ')
-            self.child.draw(renderer, pos)
-
-
 @attrs
 class Padding(ElementWidget):
     inset = attrib()
