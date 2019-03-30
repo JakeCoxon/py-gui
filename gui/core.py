@@ -264,30 +264,6 @@ class ElementWidget:
         return self.ElementType(widget=self)
 
 
-
-
-
-@attrs
-class Text(ElementWidget):
-    label = attrib()
-    align = attrib(default='left')
-
-    class ElementType(Element):
-        def perform_layout(self, constraints):
-            size = Point(len(self.widget.label), 1)
-            size = constraints.constrain(size)
-            self.bounds.size = size
-
-        def draw(self, renderer, pos):
-            x = 0
-            if self.widget.align == 'right':
-                x = self.bounds.size.x - len(self.widget.label)
-            renderer.console.print_(
-                pos.x + x,
-                pos.y,
-                self.widget.label
-            )
-
 @attrs
 class Constraint(ElementWidget):
     constraints = attrib(default=BoxConstraints())
@@ -398,23 +374,19 @@ class Align(ElementWidget):
                     math.inf if self.widget.y != 'default' else self.child.bounds.size.y
                 )
             )
-            if self.widget.x == 'right':
-                self.child.bounds.pos = Point(
-                    self.bounds.size.x - self.child.bounds.size.x,
-                    0
-                )
+            self.child.bounds.pos = Point(
+                (self.bounds.size.x - self.child.bounds.size.x) * self.widget.x,
+                0
+            )
             
         def draw(self, renderer, pos):
             pos += self.child.bounds.pos
             self.child.draw(renderer, pos)
-    
-    @classmethod
-    def right(cls):
-        return Align(x='right')
-    
-    @classmethod
-    def left(cls):
-        return Align(x='left')
+
+
+Align.right = Align(x=1)
+Align.left = Align(x=0)
+Align.centerX = Align(x=0.5)
 
 
 @attrs
@@ -442,6 +414,17 @@ class Size(ElementWidget):
     def height(cls, h):
         return Size(h=h)
 
+@attrs
+class StackLayout(ElementWidget):
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            self.bounds.size = constraints.constrain(Point(math.inf, math.inf))
+            for child in self.children:
+                child.layout(constraints)
+
+        def draw(self, renderer, pos):
+            for child in self.children:
+                child.draw(renderer, pos)
 
 
 def node_visitor(visitor):
