@@ -19,8 +19,8 @@ class Text(ElementWidget):
         def draw(self, renderer, pos):
             renderer.console.default_fg = self.widget.color
             renderer.console.print_(
-                pos.x,
-                pos.y,
+                int(pos.x),
+                int(pos.y),
                 self.widget.label
             )
 
@@ -44,37 +44,122 @@ class BackgroundColor(ElementWidget):
             self.child.draw(renderer, pos)
 
 
+@attrs
+class Border(ElementWidget):
+    color = attrib(default=(255, 255, 255))
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            inner_constraint = constraints.deflate(gui.EdgeInsets(1, 1, 1, 1))
+            self.child.layout(inner_constraint)
+            self.child.bounds.pos = Point(1, 1)
+            self.bounds.size = constraints.constrain(
+                self.child.bounds.size + Point(2, 2)
+            )
+
+        def draw(self, renderer, pos):
+            
+            c = renderer.console
+            w = self.bounds.size.x - 1
+            h = self.bounds.size.y - 1
+
+            col = self.widget.color
+
+            c.ch[pos.y, pos.x] = tcod.CHAR_NW
+            c.ch[pos.y + h, pos.x] = tcod.CHAR_SW
+            c.ch[pos.y, pos.x + w] = tcod.CHAR_NE
+            c.ch[pos.y + h, pos.x + w] = tcod.CHAR_SE
+
+            c.fg[pos.y, pos.x] = col
+            c.fg[pos.y + h, pos.x] = col
+            c.fg[pos.y, pos.x + w] = col
+            c.fg[pos.y + h, pos.x + w] = col
+
+            c.ch[(pos.y + 1):(pos.y + h), pos.x] = tcod.CHAR_VLINE
+            c.ch[(pos.y + 1):(pos.y + h), pos.x + w] = tcod.CHAR_VLINE
+            c.ch[pos.y, (pos.x + 1):(pos.x + w)] = tcod.CHAR_HLINE
+            c.ch[pos.y + h, (pos.x + 1):(pos.x + w)] = tcod.CHAR_HLINE
+           
+            c.fg[(pos.y + 1):(pos.y + h), pos.x] = col
+            c.fg[(pos.y + 1):(pos.y + h), pos.x + w] = col
+            c.fg[pos.y, (pos.x + 1):(pos.x + w)] = col
+            c.fg[pos.y + h, (pos.x + 1):(pos.x + w)] = col
+
+            self.child.draw(renderer, pos + self.child.bounds.pos)
+
+
+@attrs
+class Darken(ElementWidget):
+    amount = attrib()
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            self.child.layout(constraints)
+            self.bounds.size = self.child.bounds.size
+
+        def draw(self, renderer, pos):
+
+            c = renderer.console
+            w = self.bounds.size.x - 1
+            h = self.bounds.size.y - 1
+            scale = 1 - self.widget.amount
+
+            for x in range(pos.x, pos.x + w):
+                for y in range(pos.y, pos.y + h):
+                    bg = c.bg[y, x]
+                    fg = c.fg[y, x]
+                    c.bg[y, x] = (max(bg[0] * scale, 0), max(bg[1] * scale, 0), max(bg[2] * scale, 0))
+                    c.fg[y, x] = (max(fg[0] * scale, 0), max(fg[1] * scale, 0), max(fg[2] * scale, 0))
+                    # c.ch[y, x] = tcod.CHAR_BLOCK1
+            self.child.draw(renderer, pos)
+
+
+
 class TcodRootElement(RootElement):
     pass
 
-def start_app(gui_func, title):
+
+def start_app(gui_func, title, initial_modules):
+    import sys
+    import importlib
     SCREEN_WIDTH = 60
     SCREEN_HEIGHT = 50
     LIMIT_FPS = 20
     fullscreen = False
     tcod.sys_set_fps(LIMIT_FPS)
 
-    root = TcodRootElement()
-    context = gui.Context(
-        root=root,
-        visitor=gui.Visitor(root)
-    )
-
-    gui.update_ui(context, gui_func)
-
-    class Renderer:
-        pass
-
-    renderer = Renderer()
+    gui_func_name = gui_func.__name__
 
     with tcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, title, fullscreen) as root_console:
 
-        renderer.console = root_console
-        constraints = gui.BoxConstraints.from_w_h(SCREEN_WIDTH, SCREEN_HEIGHT)
-        root.layout(constraints)
-        root.draw(renderer, Point(0, 0))
-        tcod.console_flush()
-        
-
         while not tcod.console_is_window_closed():
+
+            root = TcodRootElement()
+            context = gui.Context(
+                root=root,
+                visitor=gui.Visitor(root)
+            )
+
+            gui.update_ui(context, gui_func)
+            
+            class Renderer:
+                pass
+
+            renderer = Renderer()
+            
+            renderer.console = root_console
+            constraints = gui.BoxConstraints.from_w_h(SCREEN_WIDTH, SCREEN_HEIGHT)
+            root.layout(constraints)
+            root.draw(renderer, Point(0, 0))
+            tcod.console_flush()
+            
             tcod.console_wait_for_keypress(True)
+            
+            main = importlib.import_module("__main__")
+
+            for mod in set(sys.modules.keys()).difference(initial_modules):
+                sys.modules.pop(mod)
+
+            sys.modules.pop("__main__")
+            gui_func = main.__dict__[gui_func_name]
+
