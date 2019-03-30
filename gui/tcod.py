@@ -1,6 +1,7 @@
 from attr import attrs, attrib
-from gui.core import Element, ElementWidget
+from gui.core import Element, ElementWidget, RootElement
 from gui.geom import Point
+import gui
 import tcod
 
 
@@ -45,9 +46,12 @@ class BackgroundColor(ElementWidget):
             self.child.draw(renderer, pos)
 
 
+class TcodRootElement(RootElement):
+    pass
+
 def start_app(gui_func, title):
     tcod.console_set_custom_font(
-        'consolas12x12_gs_tc.png',
+        'examples/consolas12x12_gs_tc.png',
         tcod.FONT_LAYOUT_TCOD | tcod.FONT_TYPE_GREYSCALE,
     )
     SCREEN_WIDTH = 60
@@ -56,6 +60,27 @@ def start_app(gui_func, title):
     fullscreen = False
     tcod.sys_set_fps(LIMIT_FPS)
 
+    root = TcodRootElement()
+    context = gui.Context(
+        root=root,
+        visitor=gui.Visitor(root)
+    )
+
+    gui.update_ui(context, gui_func)
+
+    class Renderer:
+        pass
+
+    renderer = Renderer()
+
     with tcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, title, fullscreen) as root_console:
 
-        pass
+        renderer.console = root_console
+        constraints = gui.BoxConstraints.from_w_h(SCREEN_WIDTH, SCREEN_HEIGHT)
+        root.layout(constraints)
+        root.draw(renderer, Point(0, 0))
+        tcod.console_flush()
+        
+
+        while not tcod.console_is_window_closed():
+            tcod.console_wait_for_keypress(True)

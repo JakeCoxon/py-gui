@@ -149,6 +149,10 @@ class EdgeInsets:
     def size(self):
         return Point(self.horizontal, self.vertical)
 
+    @property
+    def offset(self):
+        return Point(self.left, self.top)
+
 
 @attrs
 class BoxConstraints:
@@ -439,10 +443,7 @@ class Padding(ElementWidget):
             self.constraints = constraints
             inner_constraint = constraints.deflate(self.widget.inset)
             self.child.layout(inner_constraint)
-            self.child.bounds.pos = Point(
-                self.widget.inset.left,
-                self.widget.inset.top
-            )
+            self.child.bounds.pos = self.widget.inset.offset
             self.bounds.size = constraints.constrain(
                 self.child.bounds.size + self.widget.inset.size
             )
