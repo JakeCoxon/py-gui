@@ -8,7 +8,7 @@ import tcod
 @attrs
 class Text(ElementWidget):
     label = attrib()
-    align = attrib(default='left')
+    color = attrib(default=(255, 255, 255))
 
     class ElementType(Element):
         def perform_layout(self, constraints):
@@ -17,11 +17,9 @@ class Text(ElementWidget):
             self.bounds.size = size
 
         def draw(self, renderer, pos):
-            x = 0
-            if self.widget.align == 'right':
-                x = self.bounds.size.x - len(self.widget.label)
+            renderer.console.default_fg = self.widget.color
             renderer.console.print_(
-                pos.x + x,
+                pos.x,
                 pos.y,
                 self.widget.label
             )
@@ -50,10 +48,6 @@ class TcodRootElement(RootElement):
     pass
 
 def start_app(gui_func, title):
-    tcod.console_set_custom_font(
-        'examples/consolas12x12_gs_tc.png',
-        tcod.FONT_LAYOUT_TCOD | tcod.FONT_TYPE_GREYSCALE,
-    )
     SCREEN_WIDTH = 60
     SCREEN_HEIGHT = 50
     LIMIT_FPS = 20
