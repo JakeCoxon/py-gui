@@ -1,10 +1,11 @@
 from attr import attrs, attrib
 from kivy.uix.button import Button
 from kivy.uix.widget import Widget
-from kivy.uix.label import Label
+# from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.app import App
 from kivy.graphics import Color, Rectangle
+from kivy.core.text import Label
 from .geom import Point
 import gui.core as gui
 
@@ -19,20 +20,51 @@ class KivyElement(gui.Element):
 
 @attrs
 class BackgroundColor(gui.ElementWidget):
-    color = attrib()
+    r = attrib()
+    g = attrib()
+    b = attrib()
 
     class ElementType(KivyElement):
         def perform_layout(self, constraints):
             self.child.layout(constraints)
-            self.bounds.size = self.child.bounds.size
+            self.bounds.size = constraints.constrain(
+                self.child.bounds.size
+            )
 
         def draw(self, renderer, pos):
-            pos += self.bounds.pos
-            with renderer.canvas:
-                Color(*self.widget.color, mode='hsv')
-                Rectangle(pos=(pos.x, pos.y), size=(self.bounds.size.x, self.bounds.size.y))
+            Color(self.widget.r, self.widget.g, self.widget.b, mode='rgb')
+            Rectangle(pos=(pos.x, pos.y), size=(self.bounds.size.x, self.bounds.size.y))
 
-            # self.child.draw(renderer, pos)
+            self.child.draw(renderer, pos)
+
+@attrs
+class Text(gui.ElementWidget):
+    text = attrib()
+    color = attrib(default=(1,1,1))
+    size = attrib(default=12)
+
+    @attrs
+    class ElementType(KivyElement):
+        label = attrib(default=None)
+
+        def perform_layout(self, constraints):
+            if not self.label:
+                self.label = Label(
+                    text=self.widget.text,
+                    font_size=self.widget.size
+                )
+                self.label.refresh()
+            self.bounds.size = constraints.constrain(
+                Point(self.label.width, self.label.height)
+            )
+
+        def draw(self, renderer, pos):
+            Color(*self.widget.color)
+            Rectangle(
+                texture=self.label.texture, 
+                pos=(pos.x, pos.y),
+                size=(self.label.width, self.label.height)
+            )
 
 
 def start_app(gui_func, title):
@@ -72,7 +104,9 @@ def start_app(gui_func, title):
 
         constraints = gui.BoxConstraints.from_w_h(window.width, window.height)
         root.layout(constraints)
-        root.draw(renderer, Point(0, 0))
+
+        with canvas:
+            root.draw(renderer, Point(0, 0))
 
     def on_start(app):
         app.root_window.bind(on_draw=on_draw)
