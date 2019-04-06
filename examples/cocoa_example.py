@@ -20,7 +20,7 @@ def gui_func(ctx):
         Padding.all(8.0),
         ColumnLayout()
     ):
-        Node(Button("First button", on_press=press))
+        Node(Button(f"First button {value}", on_press=press))
         Node(Button("Second button", on_press=press))
         Node(Slider(on_change=change))
 

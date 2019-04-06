@@ -1,5 +1,6 @@
 import itertools
 import math
+import attr
 from attr import attrs, attrib
 from .geom import Point
 
@@ -10,6 +11,10 @@ class Visitor:
         self.parents = [root]
         self.ids = [-1]
         # self.current_node = None
+
+    def reset(self):
+        self.parents = [self.root]
+        self.ids = [-1]
 
     @property
     def current_node(self):
@@ -56,7 +61,7 @@ class Visitor:
 def get_matching_node(visitor, match_node, node_type, key):
     if match_node is None:
         return None
-    if compare_types(match_node == node_type):
+    if compare_types(match_node, node_type):
         return match_node
 
     for match_node in visitor.rest_children():
@@ -73,10 +78,11 @@ def align_with_node(visitor, node_type, key=None):
     existing_node = get_matching_node(visitor, visitor.current_node, node_type, key)
     if existing_node is not None:
         # print(f"Removing {existing_node}")
-        visitor.current_parent.remove_remove(existing_node)
+        visitor.current_parent.remove_child(existing_node)
     node = existing_node or create_node(visitor, node_type, key)
     # TODO: Some stuff here
-    node.widget = node_type
+    node.set_widget(node_type)
+    # node.widget = node_type
     if node is None:
         return
     # print(f"Inserting {node}")
@@ -113,7 +119,7 @@ def node_visitor(visitor):
     return Node
 
 
-def compare_types(cls, element, new_widget):
+def compare_types(element, new_widget):
     if element.widget.__class__ != new_widget.__class__:
         return False
     return True
@@ -233,6 +239,15 @@ class Element:
 
     def perform_layout(self, constraints):
         raise NotImplementedError()
+
+    def set_widget(self, widget):
+        self.widget = widget
+        try:
+            for field, value in attr.asdict(widget, recurse=False).items():
+                if hasattr(self, f'set_{field}'):
+                    getattr(self, f'set_{field}')(value)
+        except attr.exceptions.NotAnAttrsClassError:
+            pass
     
     @property
     def child(self):
@@ -438,6 +453,7 @@ class Padding(ElementWidget):
 
     class ElementType(Element):
         def perform_layout(self, constraints):
+            self.constraints = constraints
             inner_constraint = constraints.deflate(self.widget.inset)
             self.child.layout(inner_constraint)
             self.child.bounds.pos = Point(
@@ -447,6 +463,10 @@ class Padding(ElementWidget):
             self.bounds.size = constraints.constrain(
                 self.child.bounds.size + self.widget.inset.size
             )
+
+        def set_inset(self, inset):
+            if hasattr(self, 'constraints'):
+                self.layout(self.constraints)
             
         def draw(self, renderer, pos):
             self.child.draw(renderer, pos + self.child.bounds.pos)
@@ -560,9 +580,13 @@ context_stack = []
 
 
 def build_ui_with_context(context, func):
-    context_stack.append(context)
-    func(context)
-    context_stack.pop()
+    try:
+        context.visitor.reset()
+        context_stack.append(context)
+        func(context)
+        context_stack.pop()
+    except Exception as e:
+        print(e)
 
 
 def get_current_context():
@@ -575,6 +599,7 @@ def update_ui(context, func, *args, **kwargs):
         visitor = Visitor(root)
         context = Context(root, visitor)
 
+    context.visitor.reset()
     context_stack.append(context)
     func(context, *args, **kwargs)
     context_stack.pop()

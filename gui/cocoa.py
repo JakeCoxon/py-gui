@@ -89,11 +89,14 @@ class Button(ElementWidget):
         def create_view(self):
             button = NSButton.alloc().initWithFrame_(((10.0, 10.0), (80.0, 80.0)))
             button.setBezelStyle_(4)
-            button.setTitle_(self.widget.label)
+            # button.setTitle_(self.widget.label)
             self.delegate = CallbackWrapper(self.callback)
             button.setTarget_(self.delegate)
             button.setAction_('action:')
             return button
+
+        def set_label(self, label):
+            self.view.setTitle_(label)
 
         def callback(self, sender):
             self.widget.on_press()
