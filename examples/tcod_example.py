@@ -2,7 +2,7 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 import tcod
-from gui.core import Container, Node, Padding, Size, ColumnLayout, Align, StackLayout
+from gui.core import Container, Node, Padding, Size, ColumnLayout, Align, StackLayout, MaxWidth
 from gui.tcod import BackgroundColor, Text, Border, Darken, start_app
 from random import random as r
 
@@ -46,10 +46,11 @@ def gui_func(ctx):
                 Node(Text("Some text"))
         
         Node(
-            Padding.all(5),
+            Align.right,
+            Align.bottom,
             Darken(0.8),
             Border(),
-            Padding.all(5),
+            Padding.all(10),
             Text("Hello")
         )
 
