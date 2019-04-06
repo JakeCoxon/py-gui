@@ -451,8 +451,8 @@ class Align(ElementWidget):
                 )
             )
             self.child.bounds.pos = Point(
-                (self.bounds.size.x - self.child.bounds.size.x) * self.widget.x,
-                0
+                (self.bounds.size.x - self.child.bounds.size.x) * self.widget.x if self.widget.x != 'default' else 0,
+                (self.bounds.size.y - self.child.bounds.size.y) * self.widget.y if self.widget.y != 'default' else 0
             )
             
         def draw(self, renderer, pos):
@@ -463,6 +463,9 @@ class Align(ElementWidget):
 Align.right = Align(x=1)
 Align.left = Align(x=0)
 Align.centerX = Align(x=0.5)
+Align.bottom = Align(y=1)
+Align.top = Align(y=0)
+Align.centerY = Align(y=0.5)
 
 
 @attrs
