@@ -68,6 +68,9 @@ class CocoaElement(Element):
 class CocoaRootElement(CocoaElement):
     window = attrib(kw_only=True)
 
+    def __attrs_post_init__(self):
+        self.root = self
+
     def layout(self, constraints):
         self.child.layout(constraints)
         self.layout_children()
@@ -120,11 +123,16 @@ def start_app(gui_func, title):
     win.setTitle_ (title)
     win.setLevel_ (3)                   # floating window
 
+    class CocoaRenderer:
+        is_y_up = True
+
     root = CocoaRootElement(window=win)
     context = gui.Context(
         root=root,
-        visitor=gui.Visitor(root)
+        visitor=gui.Visitor(root),
+        renderer=CocoaRenderer()
     )
+    root.context = context
 
     gui.update_ui(context, gui_func)
 

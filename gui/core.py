@@ -209,6 +209,7 @@ class Bounds:
 class Element:
     widget = attrib(default=None)
     parent = attrib(default=None)
+    root = attrib(default=None)
     # layout = attrib(default=None)
     # draw = attrib(default=None)
     bounds = attrib(factory=Bounds)
@@ -224,9 +225,11 @@ class Element:
 
     def attach_to_parent(self, parent):
         self.parent = parent
+        self.root = parent.root
 
     def detatch_from_parent(self):
         self.parent = None
+        self.root = None
 
     def layout(self, constraints):
         return self.perform_layout(constraints)
@@ -247,6 +250,7 @@ class RootElement(Element):
     def __init__(self):
         super().__init__()
         self.widget = None
+        self.root = self
 
     def perform_layout(self, constraints):
         self.child.layout(constraints)
@@ -324,7 +328,7 @@ class ColumnLayout(ElementWidget):
 
     class ElementType(Element):
         def perform_layout(self, constraints):
-            self.bounds.size = Point()
+            is_y_up = self.root.context.renderer.is_y_up
             for child in self.children:
                 if self.bounds.size.y and self.widget.spacing:
                     self.bounds.size += Point(0, self.widget.spacing)
@@ -336,15 +340,18 @@ class ColumnLayout(ElementWidget):
                     max_height=constraints.max_height
                 )
                 child.layout(child_constraints)
-                child.bounds.pos = Point(
-                    x=0,
-                    y=self.bounds.size.y
-                )
+                y = self.bounds.size.y
+                if is_y_up:
+                    y = -self.bounds.size.y - child.bounds.size.y
+                child.bounds.pos = Point(0, y)
                 # todo constrain rest children heights
                 self.bounds.size = Point(
                     x=max(self.bounds.size.x, child.bounds.size.x),
                     y=self.bounds.size.y + child.bounds.size.y
                 )
+            if is_y_up:
+                for child in self.chldren:
+                    child.bounds.pos += Point(0, self.bounds.size.y)
             
         def draw(self, renderer, pos):
             for child in self.children:
@@ -476,6 +483,7 @@ def node_visitor(visitor):
 class Context:
     root = attrib()
     visitor = attrib()
+    renderer = attrib(default=None)
 
     def add_container(self, *args):
         return node_visitor(self.visitor)(*args)
