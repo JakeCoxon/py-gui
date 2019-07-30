@@ -13,16 +13,22 @@ def gui_func(ctx):
     def press():
         print(f"Click with {value}")
 
+    def press2():
+        print(f"Click the other one {value}")
+
     def change(value):
         set_value(value)
 
-    with Container(
-        Padding.all(8.0),
-        ColumnLayout()
+    # with Container(
+    #     Padding.all(8.0),
+    #     ColumnLayout()
+    # ):
+    with ColumnLayout().wrap(
+        Padding.all(8.0)
     ):
-        Node(Button(f"First button {value}", on_press=press))
-        Node(Button("Second button", on_press=press))
-        Node(Slider(on_change=change))
+        Button(f"First button {value}", on_press=press)
+        Button("Second button", on_press=press2)
+        Slider(on_change=change)
 
 
 if __name__ == "__main__":

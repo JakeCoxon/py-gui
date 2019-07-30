@@ -10,9 +10,12 @@ class Visitor:
         self.root = root
         self.parents = [root]
         self.ids = [-1]
+        # self.half_open = False
+        self.staging_nodes = []
         # self.current_node = None
 
     def reset(self):
+        self.staging_nodes = []
         self.parents = [self.root]
         self.ids = [-1]
 
@@ -93,8 +96,59 @@ def clear_unvisited(visitor, parent, node):
     pass
 
 
+# def half_open_node(visitor, node_type, key=None):
+#     open_node(visitor, node_type, key=None)
+#     visitor.half_open = True
+
+
+# def fully_open_node(visitor):
+#     visitor.half_open = False
+
+
+# def close_half_opened_node(visitor):
+#     if visitor.half_open:
+#         visitor.half_open = False
+#         close_node(visitor)
+
+def clear_staging_nodes(visitor):
+    num_staging = len(visitor.staging_nodes)
+    while visitor.staging_nodes:
+        prev_node = visitor.staging_nodes.pop()
+        wrap_nodes = prev_node.wrap
+        visitor.staging_nodes = [
+            x for x in visitor.staging_nodes
+            if x not in wrap_nodes
+        ]
+        for x in wrap_nodes:
+            open_node(visitor, prev_node)
+        open_node(visitor, prev_node)
+        close_node(visitor)
+        for x in reversed(wrap_nodes):
+            close_node(visitor)
+        assert len(visitor.staging_nodes) < num_staging
+        num_staging = len(visitor.staging_nodes)
+
+
+def pop_staging_node(visitor):
+    return visitor.staging_nodes.pop()
+
+
+def push_staging_node(visitor, node):
+    # clear_staging_nodes(visitor)
+    visitor.staging_nodes.append(node)
+
+# class Hello():
+#     def __init__(self, *args, **kwargs):
+#         print(args)
+#     def hello(self):
+#         pass
+# Hello(1).hello(Hello(2), Hello(3))
+
+
 def open_node(visitor, node_type, key=None):
     # print(f"Open {node_type}")
+    # close_half_opened_node(visitor)
+    clear_staging_nodes(visitor)
     visitor.next_node()
     align_with_node(visitor, node_type, key)
     visitor.enter_node()
@@ -102,6 +156,8 @@ def open_node(visitor, node_type, key=None):
 
 
 def close_node(visitor):
+    clear_staging_nodes(visitor)
+    # close_half_opened_node(visitor)
     clear_unvisited(visitor, visitor.current_parent, visitor.get_next_node())
     visitor.exit_node()
 
@@ -279,8 +335,28 @@ class RootElement(Element):
 
 
 class ElementWidget:
+    wrap = attrib(factory=list)
+
+    def __attrs_post_init__(self):
+        print("WHAT")
+        visitor = get_current_context().visitor
+        push_staging_node(visitor, self)
+
     def create_element(self):
         return self.ElementType(widget=self)
+
+    def __enter__(self):
+        visitor = get_current_context().visitor
+        staging_node = pop_staging_node(visitor)
+        open_node(visitor, staging_node)
+
+    def __exit__(self, type, value, traceback):
+        visitor = get_current_context().visitor
+        close_node(visitor)
+
+    def wrap(self, *widgets):
+        self.wrap.append(*widgets)
+        return self
 
 
 class ComponentElement(Element):
@@ -333,6 +409,7 @@ def use_state(initial):
 
 class Component(ElementWidget):
     def __init__(self, func, *args, **kwargs):
+        super().__init__()
         self.func = func
         self.args = args
         self.kwargs = kwargs
@@ -404,7 +481,7 @@ class ColumnLayout(ElementWidget):
                     y=self.bounds.size.y + child.bounds.size.y
                 )
             if is_y_up:
-                for child in self.chldren:
+                for child in self.children:
                     child.bounds.pos += Point(0, self.bounds.size.y)
             
         def draw(self, renderer, pos):
@@ -466,13 +543,24 @@ class Align(ElementWidget):
             pos += self.child.bounds.pos
             self.child.draw(renderer, pos)
 
+    def right():
+        return Align(x=1)
 
-Align.right = Align(x=1)
-Align.left = Align(x=0)
-Align.centerX = Align(x=0.5)
-Align.bottom = Align(y=1)
-Align.top = Align(y=0)
-Align.centerY = Align(y=0.5)
+    def left():
+        return Align(x=0)
+
+    def centerX():
+        return Align(x=0.5)
+
+    def bottom():
+        return Align(y=1)
+
+    def top():
+        return Align(y=0)
+
+    def centerY():
+        return Align(y=0.5)
+
 
 
 @attrs
@@ -546,11 +634,16 @@ class Context:
     root = attrib()
     visitor = attrib()
     renderer = attrib(default=None)
+    staging_node = attrib(default=None)
 
     def add_container(self, *args):
         return node_visitor(self.visitor)(*args)
 
     def add_node(self, *widgets):
+        self.visitor.staging_nodes = [
+            x for x in self.visitor.staging_nodes
+            if x not in widgets
+        ]
         for widget in widgets:
             open_node(self.visitor, widget)
         for widget in reversed(widgets):
@@ -565,6 +658,7 @@ def build_ui_with_context(context, func):
         context.visitor.reset()
         context_stack.append(context)
         func(context)
+        clear_staging_nodes(context.visitor)
         context_stack.pop()
     except Exception as e:
         print(e)
