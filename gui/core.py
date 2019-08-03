@@ -460,29 +460,25 @@ class ColumnLayout(ElementWidget):
     class ElementType(Element):
         def perform_layout(self, constraints):
             is_y_up = self.root.context.renderer.is_y_up
+            self.bounds.size = Point(0, 0)
             for child in self.children:
                 if self.bounds.size.y and self.widget.spacing:
                     self.bounds.size += Point(0, self.widget.spacing)
 
                 child_constraints = BoxConstraints(
-                    min_width=constraints.max_width,
+                    min_width=0,
                     min_height=0,
                     max_width=constraints.max_width,
-                    max_height=constraints.max_height
+                    max_height=constraints.max_height - self.bounds.size.y
                 )
                 child.layout(child_constraints)
                 y = self.bounds.size.y
-                if is_y_up:
-                    y = -self.bounds.size.y - child.bounds.size.y
                 child.bounds.pos = Point(0, y)
                 # todo constrain rest children heights
                 self.bounds.size = Point(
                     x=max(self.bounds.size.x, child.bounds.size.x),
                     y=self.bounds.size.y + child.bounds.size.y
                 )
-            if is_y_up:
-                for child in self.children:
-                    child.bounds.pos += Point(0, self.bounds.size.y)
             
         def draw(self, renderer, pos):
             for child in self.children:
@@ -495,6 +491,7 @@ class RowLayout(ElementWidget):
 
     class ElementType(Element):
         def perform_layout(self, constraints):
+            self.bounds.size = Point(0, 0)
             for child in self.children:
                 if self.bounds.size.y and self.widget.spacing:
                     self.bounds.size += Point(self.widget.spacing, 0)
@@ -506,7 +503,7 @@ class RowLayout(ElementWidget):
                     # max_height=constraints.max_height
                     min_width=0,
                     min_height=0,
-                    max_width=constraints.max_width,
+                    max_width=constraints.max_width - self.bounds.size.x,
                     max_height=constraints.max_height
                 )
                 child.layout(child_constraints)

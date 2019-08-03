@@ -47,6 +47,7 @@ class CocoaElement(Element):
     def layout(self, constraints):
         self.perform_layout(constraints)
         self.view.setFrameSize_(NSSize(self.bounds.size.x, self.bounds.size.y))
+        self.view.setNeedsDisplay_(True)
         self.layout_children()
 
     def layout_children(self):
@@ -57,7 +58,10 @@ class CocoaElement(Element):
         def traverse(element, pos):
             pos += element.bounds.pos
             if isinstance(element, CocoaElement):
-                element.view.setFrameOrigin_(NSPoint(pos.x, pos.y))
+                height = element.view.superview().frame().size.height
+                height -= element.view.frame().size.height
+                element.view.setFrameOrigin_(NSPoint(pos.x, height - pos.y))
+                element.view.setNeedsDisplay_(True)
                 return
             traverse_children(element, pos)
         
@@ -112,8 +116,8 @@ class Button(ElementWidget):
                 (0, 0),
                 (constraints.max_width, constraints.max_height)
             ))
-            # size = Point(rect.width, rect.height)
-            size = Point(rect.width, 40)
+            size = Point(rect.width, rect.height)
+            # size = Point(rect.width, 40)
             self.bounds.size = constraints.constrain(size)
 
 @attrs
@@ -167,12 +171,13 @@ class Label(ElementWidget):
                 (0, 0),
                 (constraints.max_width, constraints.max_height)
             ))
-            size = Point(rect.width, rect.height)
+            size = Point(constraints.max_width, rect.height)
             self.bounds.size = constraints.constrain(size)
 
 
 class CallbackWrapper(NSObject):
-    # setDelegate_() often does not retain the delegate, so a reference should be maintained elsewhere.
+    # setDelegate_() often does not retain the delegate in GC,
+    # so a reference should be maintained elsewhere.
 
     def __new__(cls, callback):
         return cls.alloc().initWithCallback_(callback)
@@ -189,17 +194,36 @@ class CallbackWrapper(NSObject):
             self.callback(sender)
 
 
+class Delegate (NSObject):
+    def __new__(cls, callback):
+        return cls.alloc().initWithCallback_(callback)
+
+    def initWithCallback_(self, callback):
+        self = self.init()
+        self.callback = callback
+        return self
+
+    def windowDidResize_(self, notification):
+        self.callback()
+
 def start_app(gui_func, title):
     app = NSApplication.sharedApplication()
 
     delegate = AppDelegate.alloc().init()
     NSApp().setDelegate_(delegate)
+
+    def callback():
+        size = win.frame().size
+        root.layout(gui.BoxConstraints.from_w_h(size.width, size.height))
+
+    win_delegate = Delegate(callback)
  
     win = NSWindow.alloc()
     frame = ((200.0, 300.0), (250.0, 200.0))
     win.initWithContentRect_styleMask_backing_defer_ (frame, 15, 2, 0)
     win.setTitle_ (title)
     win.setLevel_ (3)                   # floating window
+    win.setDelegate_(win_delegate)
 
     class CocoaRenderer:
         is_y_up = True
@@ -217,7 +241,7 @@ def start_app(gui_func, title):
 
     gui.update_ui(context, gui_func2)
 
-    root.layout(gui.BoxConstraints.from_w_h(250.0, 100.0))
+    root.layout(gui.BoxConstraints.from_w_h(250.0, 200.0))
 
     win.display()
     win.orderFrontRegardless()          ## but this one does
