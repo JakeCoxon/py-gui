@@ -105,7 +105,15 @@ class Button(ElementWidget):
             self.widget.on_press()
 
         def perform_layout(self, constraints):
-            size = Point(80.0, 40.0)
+            # size = Point(100.0, 40.0)
+
+            cell = self.view.cell()
+            rect = cell.cellSizeForBounds_((
+                (0, 0),
+                (constraints.max_width, constraints.max_height)
+            ))
+            # size = Point(rect.width, rect.height)
+            size = Point(rect.width, 40)
             self.bounds.size = constraints.constrain(size)
 
 @attrs
@@ -124,7 +132,15 @@ class Slider(ElementWidget):
             self.widget.on_change(self.view.doubleValue())
 
         def perform_layout(self, constraints):
-            size = Point(80.0, 40.0)
+            # size = Point(80.0, 40.0)
+
+            cell = self.view.cell()
+            rect = cell.cellSizeForBounds_((
+                (0, 0),
+                (constraints.max_width, constraints.max_height)
+            ))
+            size = Point(rect.width, rect.height)
+            # size = Point(rect.width, 40)
             self.bounds.size = constraints.constrain(size)
 
 

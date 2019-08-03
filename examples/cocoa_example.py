@@ -1,7 +1,7 @@
 import sys, os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
-from gui.core import Padding, ColumnLayout, Node, Container, use_state
+from gui.core import Padding, ColumnLayout, RowLayout, use_state
 from gui.cocoa import Button, Slider, Label, start_app
 
 
@@ -17,12 +17,15 @@ def cocoa_example(ctx):
     def change(value):
         set_value(value)
 
-    with ColumnLayout().decorate(
+    with ColumnLayout(spacing=8).decorate(
         Padding.all(8.0)
     ):
         Label(f"Value is {value}")
-        Button(f"First button", on_press=press)
-        Button("Second button", on_press=press2)
+        
+        with RowLayout(spacing=8):
+            Button(f"First button", on_press=press)
+            Button("Second button", on_press=press2)
+
         Slider(on_change=change)
 
 

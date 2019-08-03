@@ -129,7 +129,7 @@ def enter_exit_staging_nodes(visitor, staging_node):
         if prev_node == staging_node:
             yield
             
-        clear_staging_nodes(visitor)
+            clear_staging_nodes(visitor)
 
         close_node(visitor)
         for _ in reversed(decorators):
@@ -483,6 +483,40 @@ class ColumnLayout(ElementWidget):
             if is_y_up:
                 for child in self.children:
                     child.bounds.pos += Point(0, self.bounds.size.y)
+            
+        def draw(self, renderer, pos):
+            for child in self.children:
+                child.draw(renderer, pos + child.bounds.pos)
+
+
+@attrs
+class RowLayout(ElementWidget):
+    spacing = attrib(default=0)
+
+    class ElementType(Element):
+        def perform_layout(self, constraints):
+            for child in self.children:
+                if self.bounds.size.y and self.widget.spacing:
+                    self.bounds.size += Point(self.widget.spacing, 0)
+
+                child_constraints = BoxConstraints(
+                    # min_width=constraints.max_width,
+                    # min_height=0,
+                    # max_width=constraints.max_width,
+                    # max_height=constraints.max_height
+                    min_width=0,
+                    min_height=0,
+                    max_width=constraints.max_width,
+                    max_height=constraints.max_height
+                )
+                child.layout(child_constraints)
+                x = self.bounds.size.x
+                child.bounds.pos = Point(x, 0)
+                # todo constrain rest children heights
+                self.bounds.size = Point(
+                    x=self.bounds.size.x + child.bounds.size.x,
+                    y=max(self.bounds.size.y, child.bounds.size.y)
+                )
             
         def draw(self, renderer, pos):
             for child in self.children:
