@@ -128,6 +128,33 @@ class Slider(ElementWidget):
             self.bounds.size = constraints.constrain(size)
 
 
+@attrs
+class Label(ElementWidget):
+    label = attrib()
+
+    class ElementType(CocoaElement):
+        def create_view(self):
+            view = NSTextField.alloc().init()
+            view.setEditable_(False)
+            view.setSelectable_(False)
+            view.setBezeled_(False)
+            view.setDrawsBackground_(False)
+            return view
+
+        def set_label(self, text):
+            self.view.setStringValue_(text)
+
+        def perform_layout(self, constraints):
+            # size = Point(80.0, 40.0)
+            cell = self.view.cell()
+            rect = cell.cellSizeForBounds_((
+                (0, 0),
+                (constraints.max_width, constraints.max_height)
+            ))
+            size = Point(rect.width, rect.height)
+            self.bounds.size = constraints.constrain(size)
+
+
 class CallbackWrapper(NSObject):
     # setDelegate_() often does not retain the delegate, so a reference should be maintained elsewhere.
 
