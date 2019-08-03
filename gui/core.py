@@ -10,7 +10,6 @@ class Visitor:
         self.root = root
         self.parents = [root]
         self.ids = [-1]
-        # self.half_open = False
         self.staging_nodes = []
         # self.current_node = None
 
@@ -88,7 +87,6 @@ def align_with_node(visitor, node_type, key=None):
     # node.widget = node_type
     if node is None:
         return
-    # print(f"Inserting {node}")
     visitor.current_parent.add_child(visitor.current_id, node)
 
 
@@ -96,37 +94,51 @@ def clear_unvisited(visitor, parent, node):
     pass
 
 
-# def half_open_node(visitor, node_type, key=None):
-#     open_node(visitor, node_type, key=None)
-#     visitor.half_open = True
-
-
-# def fully_open_node(visitor):
-#     visitor.half_open = False
-
-
-# def close_half_opened_node(visitor):
-#     if visitor.half_open:
-#         visitor.half_open = False
-#         close_node(visitor)
-
 def clear_staging_nodes(visitor):
     num_staging = len(visitor.staging_nodes)
     while visitor.staging_nodes:
-        prev_node = visitor.staging_nodes.pop()
-        wrap_nodes = prev_node.wrap
+        prev_node = visitor.staging_nodes.pop(0)
+        decorators = prev_node.decorators
         visitor.staging_nodes = [
             x for x in visitor.staging_nodes
-            if x not in wrap_nodes
+            if x not in decorators
         ]
-        for x in wrap_nodes:
-            open_node(visitor, prev_node)
+        for decorator in decorators:
+            open_node(visitor, decorator)
         open_node(visitor, prev_node)
         close_node(visitor)
-        for x in reversed(wrap_nodes):
+        for _ in reversed(decorators):
             close_node(visitor)
         assert len(visitor.staging_nodes) < num_staging
         num_staging = len(visitor.staging_nodes)
+
+
+def enter_exit_staging_nodes(visitor, staging_node):
+    num_staging = len(visitor.staging_nodes)
+    while visitor.staging_nodes:
+        prev_node = visitor.staging_nodes.pop(0)
+        decorators = prev_node.decorators
+        visitor.staging_nodes = [
+            x for x in visitor.staging_nodes
+            if x not in decorators
+        ]
+        for decorator in decorators:
+            open_node(visitor, decorator)
+        open_node(visitor, prev_node)
+
+        if prev_node == staging_node:
+            yield
+            
+        clear_staging_nodes(visitor)
+
+        close_node(visitor)
+        for _ in reversed(decorators):
+            close_node(visitor)
+        assert len(visitor.staging_nodes) < num_staging
+        num_staging = len(visitor.staging_nodes)
+
+        if prev_node == staging_node:
+            return
 
 
 def pop_staging_node(visitor):
@@ -134,21 +146,11 @@ def pop_staging_node(visitor):
 
 
 def push_staging_node(visitor, node):
-    # clear_staging_nodes(visitor)
     visitor.staging_nodes.append(node)
-
-# class Hello():
-#     def __init__(self, *args, **kwargs):
-#         print(args)
-#     def hello(self):
-#         pass
-# Hello(1).hello(Hello(2), Hello(3))
 
 
 def open_node(visitor, node_type, key=None):
     # print(f"Open {node_type}")
-    # close_half_opened_node(visitor)
-    clear_staging_nodes(visitor)
     visitor.next_node()
     align_with_node(visitor, node_type, key)
     visitor.enter_node()
@@ -156,8 +158,6 @@ def open_node(visitor, node_type, key=None):
 
 
 def close_node(visitor):
-    clear_staging_nodes(visitor)
-    # close_half_opened_node(visitor)
     clear_unvisited(visitor, visitor.current_parent, visitor.get_next_node())
     visitor.exit_node()
 
@@ -334,29 +334,29 @@ class RootElement(Element):
         self.child.draw(renderer, pos)
 
 
-class ElementWidget:
-    wrap = attrib(factory=list)
-
+@attrs
+class Decoratable:
     def __attrs_post_init__(self):
-        print("WHAT")
+        self.decorators = []
         visitor = get_current_context().visitor
         push_staging_node(visitor, self)
 
-    def create_element(self):
-        return self.ElementType(widget=self)
-
     def __enter__(self):
         visitor = get_current_context().visitor
-        staging_node = pop_staging_node(visitor)
-        open_node(visitor, staging_node)
-
+        self.gen = enter_exit_staging_nodes(visitor, self)
+        next(self.gen)
+        
     def __exit__(self, type, value, traceback):
-        visitor = get_current_context().visitor
-        close_node(visitor)
+        next(self.gen, None)
 
-    def wrap(self, *widgets):
-        self.wrap.append(*widgets)
+    def decorate(self, *widgets):
+        self.decorators.append(*widgets)
         return self
+
+
+class ElementWidget(Decoratable):
+    def create_element(self):
+        return self.ElementType(widget=self)
 
 
 class ComponentElement(Element):
