@@ -21,7 +21,7 @@ def cocoa_example(ctx):
         Padding.all(8.0)
     ):
         Label(f"Value is {value}")
-        
+
         with RowLayout(spacing=8):
             Button("First button", on_press=press)
             Button("Second button", on_press=press2)
