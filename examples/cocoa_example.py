@@ -23,7 +23,7 @@ def cocoa_example(ctx):
         Label(f"Value is {value}")
         
         with RowLayout(spacing=8):
-            Button(f"First button", on_press=press)
+            Button("First button", on_press=press)
             Button("Second button", on_press=press2)
 
         Slider(on_change=change)
