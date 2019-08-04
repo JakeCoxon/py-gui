@@ -1,3 +1,4 @@
+import traceback
 import itertools
 import math
 import attr
@@ -9,17 +10,16 @@ class Visitor:
     def __init__(self, root):
         self.root = root
         self.parents = [root]
-        self.ids = [-1]
-        self.staging_nodes = []
-        # self.current_node = None
+        self.ids = [0]
 
     def reset(self):
-        self.staging_nodes = []
         self.parents = [self.root]
-        self.ids = [-1]
+        self.ids = [0]
 
     @property
     def current_node(self):
+        assert self.current_parent
+        assert self.current_id >= 0
         if self.current_id >= len(self.current_parent.children):
             return None
         return self.current_parent.children[self.current_id]
@@ -32,13 +32,6 @@ class Visitor:
     def current_id(self):
         return self.ids[-1]
 
-    def get_next_node(self):
-        next_id = self.current_id + 1
-        if next_id >= len(self.current_parent.children):
-            return None
-        node = self.current_parent.children[next_id]
-        return node
-
     def rest_children(self):
         id = self.current_id
         while id < len(self.current_parent.children):
@@ -46,18 +39,21 @@ class Visitor:
             id += 1
 
     def next_node(self):
-        current_node = self.get_next_node()
         self.ids[-1] += 1
 
+    def prev_node(self):
+        assert self.ids[-1] > 0
+        self.ids[-1] -= 1
+
     def enter_node(self):
+        assert self.current_node
         self.parents.append(self.current_node)
-        # self.current_node = None
-        self.ids.append(-1)
+        self.ids.append(0)
     
     def exit_node(self):
-        # self.current_node = self.current_parent
         self.parents.pop()
         self.ids.pop()
+        self.next_node()
 
 
 def get_matching_node(visitor, match_node, node_type, key):
@@ -77,88 +73,41 @@ def create_node(visitor, node_type, key=None):
 
 
 def align_with_node(visitor, node_type, key=None):
-    existing_node = get_matching_node(visitor, visitor.current_node, node_type, key)
-    if existing_node is not None:
-        # print(f"Removing {existing_node}")
-        visitor.current_parent.remove_child(existing_node)
-    node = existing_node or create_node(visitor, node_type, key)
-    # TODO: Some stuff here
-    node.set_widget(node_type)
-    # node.widget = node_type
-    if node is None:
+
+    if visitor.current_node and compare_types(visitor.current_node, node_type):
+        visitor.current_node.set_widget(node_type)
         return
-    visitor.current_parent.add_child(visitor.current_id, node)
+
+    existing_node = get_matching_node(visitor, visitor.current_node, node_type, key)
+
+    if existing_node is not None:
+        visitor.current_parent.unattach_child(existing_node)
+    node = existing_node or create_node(visitor, node_type, key)
+    node.set_widget(node_type)
+    assert node
+    
+    if existing_node is None:
+        # Mount here
+        visitor.current_parent.add_child(visitor.current_id, node)
+    else:
+        visitor.current_parent.attach_child(visitor.current_id, node)
 
 
-def clear_unvisited(visitor, parent, node):
-    pass
-
-
-def clear_staging_nodes(visitor):
-    num_staging = len(visitor.staging_nodes)
-    while visitor.staging_nodes:
-        prev_node = visitor.staging_nodes.pop(0)
-        decorators = prev_node.decorators
-        visitor.staging_nodes = [
-            x for x in visitor.staging_nodes
-            if x not in decorators
-        ]
-        for decorator in decorators:
-            open_node(visitor, decorator)
-        open_node(visitor, prev_node)
-        close_node(visitor)
-        for _ in reversed(decorators):
-            close_node(visitor)
-        assert len(visitor.staging_nodes) < num_staging
-        num_staging = len(visitor.staging_nodes)
-
-
-def enter_exit_staging_nodes(visitor, staging_node):
-    num_staging = len(visitor.staging_nodes)
-    while visitor.staging_nodes:
-        prev_node = visitor.staging_nodes.pop(0)
-        decorators = prev_node.decorators
-        visitor.staging_nodes = [
-            x for x in visitor.staging_nodes
-            if x not in decorators
-        ]
-        for decorator in decorators:
-            open_node(visitor, decorator)
-        open_node(visitor, prev_node)
-
-        if prev_node == staging_node:
-            yield
-            
-            clear_staging_nodes(visitor)
-
-        close_node(visitor)
-        for _ in reversed(decorators):
-            close_node(visitor)
-        assert len(visitor.staging_nodes) < num_staging
-        num_staging = len(visitor.staging_nodes)
-
-        if prev_node == staging_node:
-            return
-
-
-def pop_staging_node(visitor):
-    return visitor.staging_nodes.pop()
-
-
-def push_staging_node(visitor, node):
-    visitor.staging_nodes.append(node)
+def clear_unvisited(visitor, parent):
+    if isinstance(parent, ComponentElement):
+        return
+    for child in visitor.rest_children():
+        visitor.current_parent.remove_child(child)
 
 
 def open_node(visitor, node_type, key=None):
-    # print(f"Open {node_type}")
-    visitor.next_node()
     align_with_node(visitor, node_type, key)
     visitor.enter_node()
     return visitor.current_parent
 
 
 def close_node(visitor):
-    clear_unvisited(visitor, visitor.current_parent, visitor.get_next_node())
+    clear_unvisited(visitor, visitor.current_parent)
     visitor.exit_node()
 
 
@@ -281,12 +230,18 @@ class Element:
     bounds = attrib(factory=Bounds)
     children = attrib(factory=list)
 
-    def remove_child(self, child):
-        child.unmount()
+    def attach_child(self, index, child):
+        self.children.insert(index, child)
+
+    def unattach_child(self, child):
         self.children.remove(child)
 
+    def remove_child(self, child):
+        child.unmount()
+        self.unattach_child(child)
+
     def add_child(self, index, child):
-        self.children.insert(index, child)
+        self.attach_child(index, child)
         child.mount(self)
 
     def mount(self, parent):
@@ -294,6 +249,8 @@ class Element:
         self.root = parent.root
 
     def unmount(self):
+        for child in self.children:
+            child.unmount()
         self.parent = None
         self.root = None
 
@@ -321,6 +278,11 @@ class Element:
         return self.children[0]
 
 
+class BaseElementWidget:
+    def create_element(self):
+        return self.ElementType(widget=self)
+
+
 class RootElement(Element):
     def __init__(self):
         super().__init__()
@@ -334,29 +296,68 @@ class RootElement(Element):
         self.child.draw(renderer, pos)
 
 
+def apply_staging_nodes(context):
+
+    visitor = context.visitor
+    if context.staging_node:
+        staging_node = context.staging_node
+        context.staging_node = None
+
+        for decorator in staging_node.decorators:
+            open_node(visitor, decorator)
+            
+        open_node(visitor, staging_node)
+        close_node(visitor)
+        
+        for _ in reversed(staging_node.decorators):
+            close_node(visitor)
+
+
 @attrs
-class Decoratable:
+class DeferredNode:
     def __attrs_post_init__(self):
         self.decorators = []
-        visitor = get_current_context().visitor
-        push_staging_node(visitor, self)
+        self.gen = None
+
+        try:
+            ctx = get_current_context()
+        except IndexError:
+            pass
+        else:
+            apply_staging_nodes(ctx)
+            ctx.staging_node = self
 
     def __enter__(self):
-        visitor = get_current_context().visitor
-        self.gen = enter_exit_staging_nodes(visitor, self)
-        next(self.gen)
-        
+
+        try:
+            ctx = get_current_context()
+        except IndexError:
+            pass
+        else:
+            # You cannot instantiate a node inbetween instatiating
+            # a previous one and with-ing it
+            assert ctx.staging_node is self
+            ctx.staging_node = None
+            
+            open_node(ctx.visitor, self)
+
     def __exit__(self, type, value, traceback):
-        next(self.gen, None)
+        try:
+            ctx = get_current_context()
+        except IndexError:
+            pass
+        else:
+            apply_staging_nodes(ctx)
+            assert ctx.visitor.current_parent.widget is self
+            close_node(ctx.visitor)
 
     def decorate(self, *widgets):
-        self.decorators.append(*widgets)
+        self.decorators.extend(widgets)
         return self
 
 
-class ElementWidget(Decoratable):
-    def create_element(self):
-        return self.ElementType(widget=self)
+class ElementWidget(BaseElementWidget, DeferredNode):
+    pass
 
 
 class ComponentElement(Element):
@@ -420,7 +421,7 @@ class Component(ElementWidget):
 
 
 @attrs
-class Constraint(ElementWidget):
+class Constraint(BaseElementWidget):
     constraints = attrib(default=BoxConstraints())
 
     class ElementType(Element):
@@ -453,13 +454,13 @@ def MinHeight(min_height):
 def MaxHeight(max_height):
     return Constraint(BoxConstraints(max_height=max_height))
 
+
 @attrs
 class ColumnLayout(ElementWidget):
     spacing = attrib(default=0)
 
     class ElementType(Element):
         def perform_layout(self, constraints):
-            is_y_up = self.root.context.renderer.is_y_up
             self.bounds.size = Point(0, 0)
             for child in self.children:
                 if self.bounds.size.y and self.widget.spacing:
@@ -497,10 +498,6 @@ class RowLayout(ElementWidget):
                     self.bounds.size += Point(self.widget.spacing, 0)
 
                 child_constraints = BoxConstraints(
-                    # min_width=constraints.max_width,
-                    # min_height=0,
-                    # max_width=constraints.max_width,
-                    # max_height=constraints.max_height
                     min_width=0,
                     min_height=0,
                     max_width=constraints.max_width - self.bounds.size.x,
@@ -509,7 +506,7 @@ class RowLayout(ElementWidget):
                 child.layout(child_constraints)
                 x = self.bounds.size.x
                 child.bounds.pos = Point(x, 0)
-                # todo constrain rest children heights
+                # todo constrain rest children widths
                 self.bounds.size = Point(
                     x=self.bounds.size.x + child.bounds.size.x,
                     y=max(self.bounds.size.y, child.bounds.size.y)
@@ -521,7 +518,7 @@ class RowLayout(ElementWidget):
 
 
 @attrs
-class Padding(ElementWidget):
+class Padding(BaseElementWidget):
     inset = attrib()
 
     @classmethod
@@ -551,7 +548,7 @@ class Padding(ElementWidget):
 
 
 @attrs
-class Align(ElementWidget):
+class Align(BaseElementWidget):
     x = attrib(default='default')
     y = attrib(default='default')
 
@@ -595,7 +592,7 @@ class Align(ElementWidget):
 
 
 @attrs
-class Size(ElementWidget):
+class Size(BaseElementWidget):
     w = attrib(default='default')
     h = attrib(default='default')
 
@@ -671,10 +668,6 @@ class Context:
         return node_visitor(self.visitor)(*args)
 
     def add_node(self, *widgets):
-        self.visitor.staging_nodes = [
-            x for x in self.visitor.staging_nodes
-            if x not in widgets
-        ]
         for widget in widgets:
             open_node(self.visitor, widget)
         for widget in reversed(widgets):
@@ -689,10 +682,10 @@ def build_ui_with_context(context, func):
         context.visitor.reset()
         context_stack.append(context)
         func(context)
-        clear_staging_nodes(context.visitor)
+        apply_staging_nodes(context)
         context_stack.pop()
     except Exception as e:
-        print(e)
+        traceback.print_exc()
 
 
 def get_current_context():
@@ -705,10 +698,7 @@ def update_ui(context, func, *args, **kwargs):
         visitor = Visitor(root)
         context = Context(root, visitor)
 
-    context.visitor.reset()
-    context_stack.append(context)
-    func(context, *args, **kwargs)
-    context_stack.pop()
+    build_ui_with_context(context, func)
 
     return context
 

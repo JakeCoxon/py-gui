@@ -38,10 +38,20 @@ class CocoaElement(Element):
             raise RuntimeError("No parent to attach to")
         parent.add_subview(self.view)
 
-    def add_subview(self):
+    def unmount(self):
+        parent = self.find_cocoa_parent()
+        if not parent:
+            raise RuntimeError("No parent to attach to")
+        super().unmount()
+        parent.remove_subview(self.view)
+
+    def add_subview(self, subview):
         raise NotImplementedError()
 
     def create_view(self):
+        raise NotImplementedError()
+
+    def remove_subview(self, subview):
         raise NotImplementedError()
 
     def layout(self, constraints):
@@ -84,6 +94,10 @@ class CocoaRootElement(CocoaElement):
 
     def create_view(self):
         return None
+
+    def remove_subview(self, subview):
+        subview.removeFromSuperview()
+        # self.window.contentView().removeSubview_(subview)
 
 
 
@@ -237,7 +251,7 @@ def start_app(gui_func, title):
     root.context = context
 
     def gui_func2(ctx):
-        gui.Node(gui.Component(gui_func))
+        gui.Component(gui_func)
 
     gui.update_ui(context, gui_func2)
 
