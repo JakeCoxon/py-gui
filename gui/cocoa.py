@@ -34,14 +34,12 @@ class CocoaElement(Element):
     def mount(self, parent):
         super().mount(parent)
         parent = self.find_cocoa_parent()
-        if not parent:
-            raise RuntimeError("No parent to attach to")
+        assert parent, "No parent to attach to"
         parent.add_subview(self.view)
 
     def unmount(self):
         parent = self.find_cocoa_parent()
-        if not parent:
-            raise RuntimeError("No parent to attach to")
+        assert parent, "No parent to unattach from"
         super().unmount()
         parent.remove_subview(self.view)
 
@@ -54,13 +52,16 @@ class CocoaElement(Element):
     def remove_subview(self, subview):
         raise NotImplementedError()
 
-    def layout(self, constraints):
+    def layout(self, constraints=None):
+        constraints = constraints or self.constraints
+        self.constraints = constraints
         self.perform_layout(constraints)
         self.view.setFrameSize_(NSSize(self.bounds.size.x, self.bounds.size.y))
         self.view.setNeedsDisplay_(True)
         self.layout_children()
 
     def layout_children(self):
+        # Traverse all native children to recalculate their native positions
         def traverse_children(element, pos):
             for child in element.children:
                 traverse(child, pos)
@@ -68,6 +69,8 @@ class CocoaElement(Element):
         def traverse(element, pos):
             pos += element.bounds.pos
             if isinstance(element, CocoaElement):
+                # TODO: This is using the native view's height but actually
+                # we want the element view's height
                 height = element.view.superview().frame().size.height
                 height -= element.view.frame().size.height
                 element.view.setFrameOrigin_(NSPoint(pos.x, height - pos.y))
@@ -81,22 +84,29 @@ class CocoaElement(Element):
 @attrs
 class CocoaRootElement(CocoaElement):
     window = attrib(kw_only=True)
+    constraints = attrib(kw_only=True, default=None)
 
     def __attrs_post_init__(self):
         self.root = self
 
-    def layout(self, constraints):
+    def layout(self, constraints=None):
+        constraints = constraints or self.constraints
+        self.constraints = constraints
         self.child.layout(constraints)
         self.layout_children()
 
     def add_subview(self, subview):
         self.window.contentView().addSubview_(subview)
+        if self.constraints:
+            self.layout()
 
     def create_view(self):
         return None
 
     def remove_subview(self, subview):
         subview.removeFromSuperview()
+        if self.constraints:
+            self.layout()
         # self.window.contentView().removeSubview_(subview)
 
 
@@ -136,6 +146,7 @@ class Button(ElementWidget):
 
 @attrs
 class Slider(ElementWidget):
+    value = attrib()
     on_change = attrib(default=None)
 
     class ElementType(CocoaElement):
@@ -148,6 +159,9 @@ class Slider(ElementWidget):
 
         def callback(self, sender):
             self.widget.on_change(self.view.doubleValue())
+
+        def set_value(self, value):
+            self.view.setDoubleValue_(value)
 
         def perform_layout(self, constraints):
             # size = Point(80.0, 40.0)
@@ -220,6 +234,7 @@ class Delegate (NSObject):
     def windowDidResize_(self, notification):
         self.callback()
 
+
 def start_app(gui_func, title):
     app = NSApplication.sharedApplication()
 
@@ -234,9 +249,9 @@ def start_app(gui_func, title):
  
     win = NSWindow.alloc()
     frame = ((200.0, 300.0), (250.0, 200.0))
-    win.initWithContentRect_styleMask_backing_defer_ (frame, 15, 2, 0)
-    win.setTitle_ (title)
-    win.setLevel_ (3)                   # floating window
+    win.initWithContentRect_styleMask_backing_defer_(frame, 15, 2, 0)
+    win.setTitle_(title)
+    win.setLevel_(3)
     win.setDelegate_(win_delegate)
 
     class CocoaRenderer:
@@ -251,14 +266,15 @@ def start_app(gui_func, title):
     root.context = context
 
     def gui_func2(ctx):
-        gui.Component(gui_func)
+        with gui.Component(gui_func):
+            pass
 
     gui.update_ui(context, gui_func2)
 
     root.layout(gui.BoxConstraints.from_w_h(250.0, 200.0))
 
     win.display()
-    win.orderFrontRegardless()          ## but this one does
+    win.orderFrontRegardless()
 
     from PyObjCTools import AppHelper
     AppHelper.runEventLoop()

@@ -313,19 +313,38 @@ def apply_staging_nodes(context):
             close_node(visitor)
 
 
+def apply_staging_nodes_no_closing(context):
+
+    visitor = context.visitor
+    if context.staging_node:
+        staging_node = context.staging_node
+        context.staging_node = None
+
+        for decorator in staging_node.decorators:
+            open_node(visitor, decorator)
+            
+        open_node(visitor, staging_node)
+
+
+def decorate(node):
+    try:
+        ctx = get_current_context()
+    except IndexError:
+        pass
+    else:
+        # Can only decorate a node if its during staging phase
+        assert ctx.staging_node
+        ctx.staging_node.decorators.append(node)
+
+
 @attrs
 class DeferredNode:
     def __attrs_post_init__(self):
+        # TODO: This is not the best place to store these
+        # because it means that we cannot reuse widgets, and
+        # we'll have to make widgets immutable. Alternative
+        # option is to store decorators on a stack
         self.decorators = []
-        self.gen = None
-
-        try:
-            ctx = get_current_context()
-        except IndexError:
-            pass
-        else:
-            apply_staging_nodes(ctx)
-            ctx.staging_node = self
 
     def __enter__(self):
 
@@ -334,27 +353,34 @@ class DeferredNode:
         except IndexError:
             pass
         else:
-            # You cannot instantiate a node inbetween instatiating
-            # a previous one and with-ing it
-            assert ctx.staging_node is self
-            ctx.staging_node = None
-            
-            open_node(ctx.visitor, self)
+            apply_staging_nodes_no_closing(ctx)
+            ctx.staging_node = self
 
     def __exit__(self, type, value, traceback):
+        if value:
+            raise value
         try:
             ctx = get_current_context()
         except IndexError:
             pass
         else:
-            apply_staging_nodes(ctx)
-            assert ctx.visitor.current_parent.widget is self
-            close_node(ctx.visitor)
+            if ctx.visitor.current_parent.widget is self:
+                # Current parent is self which means our node has
+                # already been opened. apply_staging_nodes to open
+                # and close any staging node that has been added inside us
+                # This implies that our node has been opened already
+                # in which case we need to close ourself and our
+                # decorators
+                apply_staging_nodes(ctx)
+                close_node(ctx.visitor)
 
-    def decorate(self, *widgets):
-        self.decorators.extend(widgets)
-        return self
-
+                for _ in reversed(self.decorators):
+                    close_node(ctx.visitor)
+            else:
+                # This happens when ourself gets staged but has no children
+                # Apply staging nodes to open and close our
+                # own node + decorators
+                apply_staging_nodes(ctx)
 
 class ElementWidget(BaseElementWidget, DeferredNode):
     pass

@@ -1,5 +1,7 @@
 from attr import attrs, attrib
-from .core import Context, context_stack, BaseElementWidget, Element, ElementWidget, Visitor, open_node, close_node
+from .core import (
+    Context, context_stack, BaseElementWidget, Element, ElementWidget, Visitor, open_node, close_node, decorate
+)
 
 
 @attrs
@@ -105,45 +107,48 @@ class TestContextManager:
         context_stack.append(context)
 
         w_a = Widget("A")
-        assert context.staging_node is w_a
         with w_a:
-            assert visitor.current_parent.widget is w_a
-            assert visitor.current_node is None
-            assert root.children[0].widget is w_a
+            assert context.staging_node is w_a
 
             w_b = Widget("B")
-            assert context.staging_node is w_b
             with w_b:
-                assert visitor.current_parent.widget is w_b
+                # w_a is mounted
+                assert visitor.current_parent.widget is w_a
                 assert visitor.current_node is None
-                assert root.children[0].children[0].widget is w_b
+                assert root.children[0].widget is w_a
+                
+                assert context.staging_node is w_b
+            
+            assert visitor.current_parent.widget is w_a
+            assert visitor.current_node is None
+            assert root.children[0].children[0].widget is w_b
 
             assert visitor.current_parent.widget is w_a
             assert visitor.current_node is None
 
             w_c = Widget("C")
-            assert context.staging_node is w_c
             with w_c:
-                assert visitor.current_parent.widget is w_c
-                assert visitor.current_node is None
-                assert root.children[0].children[1].widget is w_c
+                assert context.staging_node is w_c
+            
+            assert visitor.current_parent.widget is w_a
+            assert visitor.current_node is None
+            assert root.children[0].children[1].widget is w_c
 
-            d1 = Decorator("decorateA")
-            d2 = Decorator("decorateB")
-            w_d = Widget("D").decorate(d1, d2)
-            assert context.staging_node is w_d
-            assert len(root.children[0].children) == 2  # deferred
+            w_d = Widget("D")
+            with w_d:
+                assert context.staging_node is w_d
+                d1 = Decorator("decorateA")
+                d2 = Decorator("decorateB")
+                decorate(d1)
+                decorate(d2)
+                assert context.staging_node.decorators[0] is d1
+                assert context.staging_node.decorators[1] is d2
+            
+            assert len(root.children[0].children) == 3
 
-            w_e = Widget("D")
-
-            assert root.children[0].children[2].widget is d1  # deferred has joined
+            assert root.children[0].children[2].widget is d1
             assert root.children[0].children[2].children[0].widget is d2
             assert root.children[0].children[2].children[0].children[0].widget is w_d
-
-            assert context.staging_node is w_e
-            assert len(root.children[0].children) == 3  # deferred
-
-        assert len(root.children[0].children) == 4
 
         assert visitor.current_parent == root
         assert visitor.current_node is None
@@ -155,6 +160,5 @@ class TestContextManager:
         assert root.children[0].children[2].widget is d1
         assert root.children[0].children[2].children[0].widget is d2
         assert root.children[0].children[2].children[0].children[0].widget is w_d
-        assert root.children[0].children[3].widget is w_e
         
         context_stack.pop()
