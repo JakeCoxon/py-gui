@@ -447,7 +447,7 @@ class Component(ElementWidget):
 
 
 @attrs
-class Constraint(BaseElementWidget):
+class Constraint(ElementWidget):
     constraints = attrib(default=BoxConstraints())
 
     class ElementType(Element):
@@ -479,6 +479,12 @@ def MinHeight(min_height):
 
 def MaxHeight(max_height):
     return Constraint(BoxConstraints(max_height=max_height))
+
+def FixedHeight(height):
+    return Constraint(BoxConstraints(min_height=height, max_height=height))
+
+def FixedWidth(width):
+    return Constraint(BoxConstraints(min_width=width, max_width=width))
 
 
 @attrs
@@ -544,7 +550,7 @@ class RowLayout(ElementWidget):
 
 
 @attrs
-class Padding(BaseElementWidget):
+class Padding(ElementWidget):
     inset = attrib()
 
     @classmethod
@@ -574,7 +580,7 @@ class Padding(BaseElementWidget):
 
 
 @attrs
-class Align(BaseElementWidget):
+class Align(ElementWidget):
     x = attrib(default='default')
     y = attrib(default='default')
 
@@ -618,7 +624,7 @@ class Align(BaseElementWidget):
 
 
 @attrs
-class Size(BaseElementWidget):
+class Size(ElementWidget):
     w = attrib(default='default')
     h = attrib(default='default')
 
